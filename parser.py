@@ -47,7 +47,7 @@ class Parser(object):
         startTime = 0
         print("start events")
 
-        for i in range(10):
+        for i in range(1000):
             e = event()
             e.time = struct.unpack("<Q", fh.read(8))[0]
             if startTime == 0:
@@ -56,33 +56,33 @@ class Parser(object):
             e.dest = struct.unpack("<Q", fh.read(8))[0]
             e.val = struct.unpack("<l", fh.read(4))[0]
             e.buff_dmg = struct.unpack("<l", fh.read(4))[0]
-            e.overstack_val = struct.unpack("<I", fh.read(4))[0]
-            e.skill_id = struct.unpack("<I", fh.read(4))[0]
-            e.src_instid = struct.unpack("<I", fh.read(4))[0]
-            e.dst_instid = struct.unpack("<I", fh.read(4))[0]
-            e.src_master_instid = struct.unpack("<I", fh.read(4))[0]
-            iss_offset = struct.unpack("<H", fh.read(2))[0] #internal tracking garbage
-            iss_offset_target = struct.unpack("<H", fh.read(2))[0] #internal tracking garbage
-            iss_bd_offset = struct.unpack("<H", fh.read(2))[0] #internal tracking garbage
-            iss_bd_offset_target = struct.unpack("<H", fh.read(2))[0] #internal tracking garbage
-            iss_alt_offset = struct.unpack("<H", fh.read(2))[0] #internal tracking garbage
-            iss_alt_offset_target = struct.unpack("<H", fh.read(2))[0] #internal tracking garbage
-            skar = struct.unpack("<H", fh.read(2))[0] #internal tracking garbage
-            skar_alt = struct.unpack("<H", fh.read(2))[0] #internal tracking garbage
-            skar_use_alt = struct.unpack("<H", fh.read(2))[0] #internal tracking garbage
-            e.iff = struct.unpack("<H", fh.read(2))[0]
-            e.buff = struct.unpack("<H", fh.read(2))[0]
-            e.result = struct.unpack("<H", fh.read(2))[0]
-            e.is_activation = struct.unpack("<H", fh.read(2))[0]
-            e.is_buffremove = struct.unpack("<H", fh.read(2))[0]
-            e.is_ninety = struct.unpack("<H", fh.read(2))[0]
-            e.is_fifty = struct.unpack("<H", fh.read(2))[0]
-            e.is_moving = struct.unpack("<H", fh.read(2))[0]
-            e.is_statechange = struct.unpack("<H", fh.read(2))[0]
-            e.is_flanking = struct.unpack("<H", fh.read(2))[0]
-            e.is_shields = struct.unpack("<H", fh.read(2))[0]
-            result_local = struct.unpack("<H", fh.read(2))[0] #internal tracking garbage
-            ident_local = struct.unpack("<H", fh.read(2))[0] #internal tracking garbage
+            e.overstack_val = struct.unpack("<H", fh.read(2))[0]
+            e.skill_id = struct.unpack("<H", fh.read(2))[0]
+            e.src_instid = struct.unpack("<H", fh.read(2))[0]
+            e.dst_instid = struct.unpack("<H", fh.read(2))[0]
+            e.src_master_instid = struct.unpack("<H", fh.read(2))[0]
+            iss_offset = struct.unpack("<B", fh.read(1))[0] #internal tracking garbage
+            iss_offset_target = struct.unpack("<B", fh.read(1))[0] #internal tracking garbage
+            iss_bd_offset = struct.unpack("<B", fh.read(1))[0] #internal tracking garbage
+            iss_bd_offset_target = struct.unpack("<B", fh.read(1))[0] #internal tracking garbage
+            iss_alt_offset = struct.unpack("<B", fh.read(1))[0] #internal tracking garbage
+            iss_alt_offset_target = struct.unpack("<B", fh.read(1))[0] #internal tracking garbage
+            skar = struct.unpack("<B", fh.read(1))[0] #internal tracking garbage
+            skar_alt = struct.unpack("<B", fh.read(1))[0] #internal tracking garbage
+            skar_use_alt = struct.unpack("<B", fh.read(1))[0] #internal tracking garbage
+            e.iff = struct.unpack("<B", fh.read(1))[0]
+            e.buff = struct.unpack("<B", fh.read(1))[0]
+            e.result = struct.unpack("<B", fh.read(1))[0]
+            e.is_activation = struct.unpack("<B", fh.read(1))[0]
+            e.is_buffremove = struct.unpack("<B", fh.read(1))[0]
+            e.is_ninety = struct.unpack("<B", fh.read(1))[0]
+            e.is_fifty = struct.unpack("<B", fh.read(1))[0]
+            e.is_moving = struct.unpack("<B", fh.read(1))[0]
+            e.is_statechange = struct.unpack("<B", fh.read(1))[0]
+            e.is_flanking = struct.unpack("<B", fh.read(1))[0]
+            e.is_shields = struct.unpack("<B", fh.read(1))[0]
+            result_local = struct.unpack("<B", fh.read(1))[0] #internal tracking garbage
+            ident_local = struct.unpack("<B", fh.read(1))[0] #internal tracking garbage
             e.print()
             events[eventCount] = e
 
