@@ -21,7 +21,7 @@ class Parser(object):
 
         for i in range(player_count):
             e = entity()
-            agent = struct.unpack("<Q", fh.read(8))[0]
+            e.addr = struct.unpack("<Q", fh.read(8))[0]
             e.setElite(fh.read(4), fh.read(4))
             tough = struct.unpack("<i", fh.read(4))[0]
             healing = struct.unpack("<i", fh.read(4))[0]
@@ -42,16 +42,15 @@ class Parser(object):
             name = fh.read(64).decode('ascii').rstrip('\x00')
             #print("Action: %s id: %s" % (name, skill_id))
 
-        events = [0]
-        eventCount = 0
-        startTime = 0
+        events = []
         print("start events")
 
-        for i in range(1000):
+        while(1):
             e = event()
-            e.time = struct.unpack("<Q", fh.read(8))[0]
-            if startTime == 0:
-                startTime = e.time
+            test = fh.read(8)
+            if len(test) < 8:
+                break
+            e.time = struct.unpack("<Q", test)[0]
             e.src = struct.unpack("<Q", fh.read(8))[0]
             e.dest = struct.unpack("<Q", fh.read(8))[0]
             e.val = struct.unpack("<l", fh.read(4))[0]
@@ -83,9 +82,12 @@ class Parser(object):
             e.is_shields = struct.unpack("<B", fh.read(1))[0]
             result_local = struct.unpack("<B", fh.read(1))[0] #internal tracking garbage
             ident_local = struct.unpack("<B", fh.read(1))[0] #internal tracking garbage
-            e.print()
-            events[eventCount] = e
+            #e.print()
+            events.append(e)
+        events[0].print()
+        events[len(events)-1].print()
 
+        print("Encounter Length: %s" % str(events[len(events)-1].time - events[0].time))
 
 
 

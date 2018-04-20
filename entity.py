@@ -9,6 +9,8 @@ class entity():
     prof = -1
     elite = -1
 
+    addr = -1
+
     def setElite(self, prof, elite):
 
         #print(prof)
