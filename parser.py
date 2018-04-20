@@ -4,6 +4,11 @@ from event import event
 from entity import entity
 
 class Parser(object):
+
+    entities = dict()
+    skills = dict()
+    events = []
+
     def __init__(self, filepath):
         with open(filepath, 'rb') as fh:
             self.parse(fh)
@@ -17,8 +22,6 @@ class Parser(object):
         player_count = struct.unpack("<I", fh.read(4))[0]
         print("count %s" % player_count )
 
-        entities = [0]
-
         for i in range(player_count):
             e = entity()
             e.addr = struct.unpack("<Q", fh.read(8))[0]
@@ -27,22 +30,26 @@ class Parser(object):
             healing = struct.unpack("<i", fh.read(4))[0]
             condi = struct.unpack("<i", fh.read(4))[0]
             e.setName(fh.read(68))
-            e.print()
+            #e.print()
             #if elite != -1:
             #print("%s - Entity: %s Subsquad: %s Profession: %s : %s %s %s" % (elite, name, subsquad, prof, tough, healing, condi))
-        print(version)
-        print(inst_id)
-        print(player_count)
+            self.entities[e.id] = e
+        print(self.entities)
 
         skill_count = struct.unpack("<i", fh.read(4))[0]
         print("Skill count: %s" % skill_count)
 
+
         for i in range(skill_count):
             skill_id = struct.unpack("<i", fh.read(4))[0]
             name = fh.read(64).decode('ascii').rstrip('\x00')
-            #print("Action: %s id: %s" % (name, skill_id))
+            self.skills[skill_id] = name
 
-        events = []
+        #skills cleanup
+        self.skills[1066] = "Resurrect"
+        self.skills[1175] = "Bandage"
+        print(self.skills)
+
         print("start events")
 
         while(1):
@@ -83,13 +90,35 @@ class Parser(object):
             result_local = struct.unpack("<B", fh.read(1))[0] #internal tracking garbage
             ident_local = struct.unpack("<B", fh.read(1))[0] #internal tracking garbage
             #e.print()
-            events.append(e)
-        events[0].print()
-        events[len(events)-1].print()
+            self.events.append(e)
 
-        print("Encounter Length: %s" % str(events[len(events)-1].time - events[0].time))
+        #for i in range(1000):
+        #    events[i].print()
+        self.validateEvents()
+        print("Encounter Length: %s" % str(self.events[len(self.events)-1].time - self.events[0].time))
 
+    def validateEvents(self):
+        for e in self.events:
+            error = 0
+            if e.iff < 0 or e.iff > 2:
+                print("iff out of bounds")
+                error = 1
+            if e.result < 0 or e.result > 8:
+                print("result out of bounds")
+                error = 1
+            if e.is_activation < 0 or e.is_activation > 5:
+                print("activation out of bounds")
+                error = 1
+            if e.is_statechange < 0 or e.is_statechange > 17:
+                print("statechange out of bounds")
+                error = 1
+            if e.is_buffremove < 0 or e.is_buffremove > 3:
+                print("buffremove out of bounds")
+                error = 1
+            if error:
+                print("index: %i" % self.events.index(e))
+                e.print()
 
 
 if __name__ == '__main__':
-    p = Parser('./test2.evtc')
+    p = Parser('./test.evtc')

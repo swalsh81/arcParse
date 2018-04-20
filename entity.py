@@ -38,6 +38,7 @@ class entity():
         else:
             self.subsquad = name[-1:]
             self.name = name[:-1]
+            self.id = self.name #for now
 
 
     def print(self):

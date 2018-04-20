@@ -2,7 +2,16 @@ classes = [-1,-1,-1,-1,-1,-1,"Mesmer","Necromancer",-1]
 
 def getClass(i):
 
-    if classes[i-1] == -1:
+    if classes[i-1]  == -1:
         return i
     else:
         return classes[i-1]
+
+
+cbtresult = ["CBTR_NORMAL", "CBTR_CRIT", "CBTR_GLANCE", "CBTR_BLOCK", "CBTR_EVADE",  "CBTR_INTERRUPT", "CBTR_ABSORB", "CBTR_BLIND", "CBTR_KILLINGBLOW"]
+
+cbtactivation = ["ACTV_NONE", "A CTV_NORMAL", "A CTV_QUICKNESS", "A CTV_CANCEL_FIRE", "A CTV_CANCEL_CANCEL", "A CTV_RESET"] 
+
+cbtstatechange = ["CBTS_NONE", "CBTS_ENTERCOMBAT", "CBTS_EXITCOMBAT", "CBTS_CHANGEUP", "CBTS_CHANGEDEAD", "CBTS_CHANGEDOWN", "CBTS_SPAWN", "CBTS_DESPAWN", "CBTS_HEALTHUPDATE", "CBTS_LOGSTART", "CBTS_LOGEND", "CBTS_WEAPSWAP", "CBTS_MAXHEALTHUPDATE", "CBTS_POINTOFVIEW", "CBTS_LANGUAGE", "CBTS_GWBUILD", "CBTS_SHARDID", "CBTS_REWARD"] 
+
+cbtbuffremove = ["CBTB_NONE", "CBTB_ALL", "CBTB_SINGLE", "CBTB_MANUAL"] 
