@@ -30,7 +30,7 @@ class Parser(object):
             healing = struct.unpack("<i", fh.read(4))[0]
             condi = struct.unpack("<i", fh.read(4))[0]
             e.setName(fh.read(68))
-            #e.print()
+            e.print()
             #if elite != -1:
             #print("%s - Entity: %s Subsquad: %s Profession: %s : %s %s %s" % (elite, name, subsquad, prof, tough, healing, condi))
             self.entities[e.id] = e
@@ -54,7 +54,7 @@ class Parser(object):
 
         while(1):
             e = event()
-            test = fh.read(8)
+            test = fh.read(8) #try to grab timestamp. If not enough data, end of file
             if len(test) < 8:
                 break
             e.time = struct.unpack("<Q", test)[0]
@@ -92,10 +92,37 @@ class Parser(object):
             #e.print()
             self.events.append(e)
 
-        #for i in range(1000):
-        #    events[i].print()
-        self.validateEvents()
+        #self.validateEvents()
+        self.fillInStuff()
         print("Encounter Length: %s" % str(self.events[len(self.events)-1].time - self.events[0].time))
+
+        #self.findSkill(10646)
+        #self.minionTest()
+
+    def fillInStuff(self):
+        startTime = self.events[0].time
+        for e in self.events:
+            e.time = e.time - startTime
+            e.skill_id = self.skills[e.skill_id]
+            e.result = reference.cbtresult[e.result]
+            e.is_statechange = reference.cbtstatechange[e.is_statechange]
+            e.is_buffremove = reference.cbtbuffremove[e.is_buffremove]
+            e.print()
+
+    def minionTest(self):
+        counter = 0
+        for e in self.events:
+            if e.src_master_instid >0:
+                e.print()
+                counter += 1
+            if counter > 20:
+                break
+
+    def findSkill(self, i):
+        for e in self.events:
+            if e.skill_id == i:
+                e.print()
+
 
     def validateEvents(self):
         for e in self.events:
