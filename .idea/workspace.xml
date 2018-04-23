@@ -3,10 +3,6 @@
   <component name="ChangeListManager">
     <list default="true" id="ca65394a-5bde-4a63-8d8d-5c56f7d6a516" name="Default" comment="">
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/entity.py" afterPath="$PROJECT_DIR$/entity.py" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/event.py" afterPath="$PROJECT_DIR$/event.py" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/parser.py" afterPath="$PROJECT_DIR$/parser.py" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/reference.py" afterPath="$PROJECT_DIR$/reference.py" />
     </list>
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
     <option name="TRACKING_ENABLED" value="true" />
@@ -123,7 +119,7 @@
       </list>
     </option>
   </component>
-  <component name="ProjectFrameBounds" extendedState="6">
+  <component name="ProjectFrameBounds" extendedState="7">
     <option name="x" value="1" />
     <option name="y" value="-13" />
     <option name="width" value="1284" />
@@ -235,11 +231,18 @@
       <option name="project" value="LOCAL" />
       <updated>1524252154952</updated>
     </task>
-    <option name="localTasksCounter" value="5" />
+    <task id="LOCAL-00005" summary="instance source and destination ids figured out">
+      <created>1524511141149</created>
+      <option name="number" value="00005" />
+      <option name="presentableId" value="LOCAL-00005" />
+      <option name="project" value="LOCAL" />
+      <updated>1524511141149</updated>
+    </task>
+    <option name="localTasksCounter" value="6" />
     <servers />
   </component>
   <component name="ToolWindowManager">
-    <frame x="-8" y="-8" width="1296" height="776" extended-state="6" />
+    <frame x="-8" y="-8" width="1296" height="776" extended-state="7" />
     <editor active="true" />
     <layout>
       <window_info id="Project" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.11812298" sideWeight="0.5" order="0" side_tool="false" content_ui="combo" />
@@ -290,7 +293,8 @@
     <MESSAGE value="remove error for EOF" />
     <MESSAGE value="entity and skill dictionaries. event data validating" />
     <MESSAGE value="some data identification" />
-    <option name="LAST_COMMIT_MESSAGE" value="some data identification" />
+    <MESSAGE value="instance source and destination ids figured out" />
+    <option name="LAST_COMMIT_MESSAGE" value="instance source and destination ids figured out" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
