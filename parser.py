@@ -5,10 +5,10 @@ from entity import entity
 
 class Parser(object):
 
-    entities = dict()
-    entitiesID = dict()
-    skills = dict()
-    events = []
+    entities = dict() #keys correstond to entity.addr, event.src or event.dest (source and destination of skills)
+    entitiesID = dict() #keys are the instance ids which differ from entity.addr.these correspond to src_instid and dest_instid in the event as well as master_src_instid in an event for a pet/minion. values reflect an entity.addr
+    skills = dict() #keys are skill.id, values are names
+    events = [] #chronological array of events
 
     def __init__(self, filepath):
         with open(filepath, 'rb') as fh:
