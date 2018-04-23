@@ -11,7 +11,7 @@ class event():
     dst_instid = -1
     src_master_instid = -1
     iff = -1
-    buff = -1
+    is_buff = -1
     result = -1
     is_activation = -1
     is_buffremove = -1

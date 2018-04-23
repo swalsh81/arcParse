@@ -6,14 +6,20 @@ from entity import entity
 class Parser(object):
 
     entities = dict()
+    entitiesID = dict()
     skills = dict()
     events = []
 
     def __init__(self, filepath):
         with open(filepath, 'rb') as fh:
             self.parse(fh)
+            self.getInstIds()
+            #self.fillInStuff()
 
     def parse(self, fh):
+        #defaults
+        self.entities[-1] = entity()
+
         fh.read(4) # skip random EVTC tag
         version = fh.read(8)
         fh.read(1) # skip
@@ -24,16 +30,19 @@ class Parser(object):
 
         for i in range(player_count):
             e = entity()
-            e.addr = struct.unpack("<Q", fh.read(8))[0]
+            addr = fh.read(8)
+            #print(addr)
+            e.addr = struct.unpack("<Q", addr)[0]
+            #print(e.addr)
             e.setElite(fh.read(4), fh.read(4))
             tough = struct.unpack("<i", fh.read(4))[0]
             healing = struct.unpack("<i", fh.read(4))[0]
             condi = struct.unpack("<i", fh.read(4))[0]
             e.setName(fh.read(68))
-            e.print()
+            #e.print()
             #if elite != -1:
             #print("%s - Entity: %s Subsquad: %s Profession: %s : %s %s %s" % (elite, name, subsquad, prof, tough, healing, condi))
-            self.entities[e.id] = e
+            self.entities[e.addr] = e
         print(self.entities)
 
         skill_count = struct.unpack("<i", fh.read(4))[0]
@@ -51,6 +60,7 @@ class Parser(object):
         print(self.skills)
 
         print("start events")
+        count = 0
 
         while(1):
             e = event()
@@ -58,13 +68,15 @@ class Parser(object):
             if len(test) < 8:
                 break
             e.time = struct.unpack("<Q", test)[0]
-            e.src = struct.unpack("<Q", fh.read(8))[0]
+            src = fh.read(8)
+            e.src = struct.unpack("<Q", src)[0]
             e.dest = struct.unpack("<Q", fh.read(8))[0]
             e.val = struct.unpack("<l", fh.read(4))[0]
             e.buff_dmg = struct.unpack("<l", fh.read(4))[0]
             e.overstack_val = struct.unpack("<H", fh.read(2))[0]
             e.skill_id = struct.unpack("<H", fh.read(2))[0]
-            e.src_instid = struct.unpack("<H", fh.read(2))[0]
+            src_instid = fh.read(2)
+            e.src_instid = struct.unpack("<H", src_instid)[0]
             e.dst_instid = struct.unpack("<H", fh.read(2))[0]
             e.src_master_instid = struct.unpack("<H", fh.read(2))[0]
             iss_offset = struct.unpack("<B", fh.read(1))[0] #internal tracking garbage
@@ -77,7 +89,7 @@ class Parser(object):
             skar_alt = struct.unpack("<B", fh.read(1))[0] #internal tracking garbage
             skar_use_alt = struct.unpack("<B", fh.read(1))[0] #internal tracking garbage
             e.iff = struct.unpack("<B", fh.read(1))[0]
-            e.buff = struct.unpack("<B", fh.read(1))[0]
+            e.is_buff = struct.unpack("<B", fh.read(1))[0]
             e.result = struct.unpack("<B", fh.read(1))[0]
             e.is_activation = struct.unpack("<B", fh.read(1))[0]
             e.is_buffremove = struct.unpack("<B", fh.read(1))[0]
@@ -89,25 +101,57 @@ class Parser(object):
             e.is_shields = struct.unpack("<B", fh.read(1))[0]
             result_local = struct.unpack("<B", fh.read(1))[0] #internal tracking garbage
             ident_local = struct.unpack("<B", fh.read(1))[0] #internal tracking garbage
-            #e.print()
+            if count < 0:
+                print(src_instid)
+                print(e.src_instid)
+                e.print()
+                count += 1
             self.events.append(e)
 
+            #if self.entities[e.addr]
+
         #self.validateEvents()
-        self.fillInStuff()
         print("Encounter Length: %s" % str(self.events[len(self.events)-1].time - self.events[0].time))
 
         #self.findSkill(10646)
         #self.minionTest()
 
+    def getInstIds(self):
+        for evt in self.events:
+            if not evt.is_statechange:
+                if evt.src in self.entities:
+                    if evt.src_instid not in self.entities[evt.src].inst_id:
+                        self.entities[evt.src].inst_id.append(evt.src_instid)
+                    if evt.src_instid not in self.entitiesID:
+                        self.entitiesID[evt.src_instid] = evt.src
+
     def fillInStuff(self):
         startTime = self.events[0].time
+        badSrc = 0
+        badDest = 0
+        count = 0
         for e in self.events:
+            srcname = self.entities.get(e.src, self.entities[-1]).name
+            if srcname == -1:
+                srcname = e.src
+                badSrc += 1
+            e.src = srcname
+
+            destname = self.entities.get(e.dest, self.entities[-1]).name
+            if destname == -1:
+                destname = e.src
+                badDest += 1
+            e.dest = destname
             e.time = e.time - startTime
             e.skill_id = self.skills[e.skill_id]
             e.result = reference.cbtresult[e.result]
             e.is_statechange = reference.cbtstatechange[e.is_statechange]
             e.is_buffremove = reference.cbtbuffremove[e.is_buffremove]
             e.print()
+            count += 1
+        print("invalid src: %i" % badSrc)
+        print("invalid dest: %i" % badDest)
+        print("event Count: %i" % len(self.events))
 
     def minionTest(self):
         counter = 0

@@ -1,15 +1,21 @@
 import struct
+from event import event
 
 class entity():
 
-    name = ''
-    subsquad = -1
-    id = -1
+    def __init__(self):
+        self.name = -1
+        self.subsquad = -1
+        self.id = -1
 
-    prof = -1
-    elite = -1
+        self.prof = -1
+        self.elite = -1
 
-    addr = -1
+        self.addr = -1
+
+        self.inst_id = []
+
+        self.damageInc = dict()
 
     def setElite(self, prof, elite):
 
@@ -39,6 +45,8 @@ class entity():
             self.subsquad = name[-1:]
             self.name = name[:-1]
             self.id = self.name #for now
+
+    #def addEvent(self, evt):
 
 
     def print(self):
