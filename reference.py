@@ -10,7 +10,7 @@ def getClass(i):
         return classes[i-1]
 
 
-class cbtresult(Enum):
+class cbtresult():
     CBTR_NORMAL = 0
     CBTR_CRIT =1
     CBTR_GLANCE = 2
@@ -21,7 +21,7 @@ class cbtresult(Enum):
     CBTR_BLIND = 7
     CBTR_KILLINGBLOW = 8
 
-class cbtactivation(Enum):
+class cbtactivation():
     ACTV_NONE = 0
     ACTV_NORMAL = 1
     ACTV_QUICKNESS = 2
@@ -29,11 +29,11 @@ class cbtactivation(Enum):
     ACTV_CANCEL_CANCEL = 4
     ACTV_RESET = 5
 
-class cbtstatechange(Enum):
+class cbtstatechange():
     CBTS_NONE = 0 
     CBTS_ENTERCOMBAT = 1
     CBTS_EXITCOMBAT = 2
-    CBTS_CHANGEUP =3 
+    CBTS_CHANGEUP = 3
     CBTS_CHANGEDEAD = 4
     CBTS_CHANGEDOWN = 5
     CBTS_SPAWN = 6 
@@ -49,7 +49,7 @@ class cbtstatechange(Enum):
     CBTS_SHARDID = 16 
     CBTS_REWARD = 17
 
-class cbtbuffremove(Enum):
+class cbtbuffremove():
     CBTB_NONE = 0 
     CBTB_ALL = 1 
     CBTB_SINGLE = 2 
