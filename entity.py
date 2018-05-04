@@ -4,6 +4,12 @@ from reference import cbtstatechange, cbtresult, cbtbuffremove, cbtactivation
 
 class entity():
 
+    SKILL_INC_TOTAL_DAMAGE = -100
+    SKILL_INC_IMPACT = -101
+    SRC_INC_TOTAL_DAMAGE = -102
+
+    RESULT_MODIFIER = 200
+
     def __init__(self):
         self.name = -1
         self.account = -1
@@ -19,7 +25,8 @@ class entity():
         self.inst_id = []
 
         self.damageInc = dict()
-        self.damageTotal = 0
+        self.physDamageTotal = 0
+        self.condiDamageTotal = 0
 
         self.firstSeen = -1
         self.lastSeen = -1
@@ -34,6 +41,7 @@ class entity():
         self.events = []
 
         self.isPlayer = False
+
 
     def setElite(self, prof, elite):
 
@@ -87,20 +95,38 @@ class entity():
                 None
 
         if evt.dest == self.addr:
-            if not evt.is_activation and not evt.is_buffremove and not evt.is_buff:
-                if evt.src not in self.damageInc:
-                    self.damageInc[evt.src] = dict()
-                if evt.skill_id not in self.damageInc[evt.src]:
-                    self.damageInc[evt.src][evt.skill_id] = dict()
-                    self.damageInc[evt.src][evt.skill_id]['count'] = 0
-                    self.damageInc[evt.src][evt.skill_id]['damage'] = 0
+            if not evt.is_activation and not evt.is_buffremove:
+                # if evt.result != cbtresult.CBTR_NORMAL:
+                #     evt.print()
+                #     print(cbtresult.keys(evt.result))
+                if evt.is_buff:
+                    if evt.buff_dmg and not evt.val:
+                        self.addIncDamage(evt.src, evt.skill_id, evt.buff_dmg, evt.result)
+                        self.condiDamageTotal += evt.buff_dmg
 
-                self.damageInc[evt.src][evt.skill_id]['count'] += 1
-                self.damageInc[evt.src][evt.skill_id]['damage'] += evt.val
-                self.damageTotal += evt.val
+                elif not evt.is_buff:
+                    self.addIncDamage(evt.src, evt.skill_id, evt.val, evt.result)
+                    self.physDamageTotal += evt.val
 
         self.eventCount += 1
         self.events.append(evt)
+
+    def addIncDamage(self, src, skill_id, val, result):
+        if src not in self.damageInc:
+            self.damageInc[src] = dict()
+            self.damageInc[src][self.SRC_INC_TOTAL_DAMAGE] = 0
+        if skill_id not in self.damageInc[src]:
+            self.damageInc[src][skill_id] = dict()
+            self.damageInc[src][skill_id][self.SKILL_INC_IMPACT] = 0
+            self.damageInc[src][skill_id][self.SKILL_INC_TOTAL_DAMAGE] = 0
+
+        self.damageInc[src][self.SRC_INC_TOTAL_DAMAGE] += val
+        self.damageInc[src][skill_id][self.SKILL_INC_IMPACT] += 1
+        self.damageInc[src][skill_id][self.SKILL_INC_TOTAL_DAMAGE] += val
+
+        if (self.RESULT_MODIFIER + result) not in self.damageInc[src][skill_id]:
+            self.damageInc[src][skill_id][self.RESULT_MODIFIER + result] = 0
+        self.damageInc[src][skill_id][self.RESULT_MODIFIER + result] += 1
 
     def print(self):
         print(vars(self))

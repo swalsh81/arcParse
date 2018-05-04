@@ -4,9 +4,7 @@ from PyQt5.QtCore import QThreadPool
 from plotwidget import PlotWidget
 from encounter import Encounter
 from worker import Worker
-
-
-
+from entity import entity as Entity
 
 class MainWindow(QtWidgets.QMainWindow):
 
@@ -22,30 +20,43 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.progressBarText = ''
 
+        self.dataTable.header().setSectionResizeMode(QtWidgets.QHeaderView.ResizeToContents)
+
+
+    def analyze(self, encounter):
+
+        self.dataTable.setModel(encounter.getDamageIncModel())
+
+        return
+        # for e in encounter.entities:
+        #     if encounter.entities[e].isPlayer:
+        #         p = encounter.entities[e]
+        #         self.log("\n" + p.character)
+        #
+        #         for source in p.damageInc:
+        #             self.log('-')
+        #             self.log("From: %s" % encounter.entities[source].name)
+        #             src = p.damageInc[source]
+        #             for skill in src:
+        #                 if skill == Entity.SRC_INC_TOTAL_DAMAGE:
+        #                     self.log("Total damage from source: %s" % src[skill])
+        #                 else:
+        #                     sk = src[skill]
+        #                     self.log("%s hit %s times for %s damage" % (encounter.skills[skill], str(sk[Entity.SKILL_INC_IMPACT]), str(sk[Entity.SKILL_INC_TOTAL_DAMAGE])))
+
+    def openQuick(self, encounter):
+        encounter = self.openFile()
+        encounter.finished.connect(self.onFinish)
+        worker = Worker(encounter.parseQuick)
+        self.threadpool.start(worker)
+
     def openFull(self, encounter):
         encounter = self.openFile()
         encounter.finished.connect(self.analyze)
         worker = Worker(encounter.parseFull)
         self.threadpool.start(worker)
 
-    def analyze(self, encounter):
-        for e in encounter.entities:
-            if encounter.entities[e].isPlayer:
-                p = encounter.entities[e]
-                self.log("\n" + p.character)
 
-                for source in p.damageInc:
-                    self.log('-')
-                    self.log("From: %s" % encounter.entities[source].name)
-                    src = p.damageInc[source]
-                    for skill in src:
-                        sk = src[skill]
-                        self.log("%s hit %s times for %s damage" % (encounter.skills[skill], str(sk['count']), str(sk['damage'])))
-
-    def openQuick(self, encounter):
-        encounter = self.openFile()
-        worker = Worker(encounter.parseQuick)
-        self.threadpool.start(worker)
 
     def openFile(self):
         name = self.fileEdit.text()
@@ -63,6 +74,10 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def log(self, txt):
         self.logEdit.append(txt)
+
+    def onFinish(self, encounter):
+        self.dataTable.setModel(encounter.getDamageIncModel())
+
 
 if __name__ == '__main__':
     app = QtWidgets.QApplication(sys.argv)
