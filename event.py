@@ -1,4 +1,4 @@
-class event():
+class event:
 
     time = -1
     src = -1

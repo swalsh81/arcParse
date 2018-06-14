@@ -1,9 +1,11 @@
-from PyQt5.QtCore import QRunnable, pyqtSlot
+from PyQt5.QtCore import QRunnable, pyqtSlot, QThreadPool
 
-class Worker(QRunnable):
+ThreadPool = QThreadPool()
+
+class Job(QRunnable):
 
     def __init__(self, fn, *args, **kwargs):
-        super(Worker, self).__init__()
+        super(Job, self).__init__()
         # Store constructor arguments (re-used for processing)
         self.fn = fn
         self.args = args

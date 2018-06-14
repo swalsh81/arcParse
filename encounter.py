@@ -1,66 +1,73 @@
 import struct
 import reference
 from event import event
-from entity import entity
-from PyQt5.QtCore import pyqtSignal, QObject, QAbstractItemModel, QModelIndex, QVariant, Qt
+from entity import Entity
+from PyQt5.QtCore import pyqtSignal, QObject
 import tools
 import os
 
 class Encounter(QObject):
-
-    entities = dict() #keys correstond to entity.addr, event.src or event.dest (source and destination of skills)
-    entitiesID = dict() #keys are the instance ids which differ from entity.addr.these correspond to src_instid and dest_instid in the event as well as master_src_instid in an event for a pet/minion. values reflect an entity.addr
-    skills = dict() #keys are skill.id, values are names
-    events = [] #chronological array of events
-
-    progressSignal = pyqtSignal(str, int)
-    logSignal = pyqtSignal(str)
-    finished = pyqtSignal(object)
-
     GETTING_EVENTS_LOG = "Getting events..."
     DATA_CLEANUP_LOG = 'Data Cleanup...'
     RELATING_EVENTS_LOG = 'Relating Events...'
     FINDING_DAMAGE_SOURCES = 'Finding Damage Sources...'
 
-    entityCount = -1
-    playerCount = 0
-    skillCount = -1
-    startOfEvents = -1
-    fileSize = 0
-    inst_id = 0
-    boss_addr = -1
-    encounterLength = 0
+    progressSignal = pyqtSignal(str, int)
+    logSignal = pyqtSignal(str)
+    quickFinished = pyqtSignal(object)
+    fullFinished = pyqtSignal(object)
 
-    players = []
-    damageSources = dict()
-
-    result = "Failed"
-
-    #Header: 16 bytes
-    #Entity Count: 4 bytes
-    #Entity: 96 bytes
-    #Skill Count: 4 bytes
-    #Skill: 68 bytes
-    #Event: 64 bytes
-
-    damageIncModel = None
-
+    startPrinting = False
 
     def __init__(self, filepath):
         super(Encounter, self).__init__()
         self.path = filepath
 
-    def getDamageIncModel(self):
-        if self.damageIncModel == None:
-            self.damageIncModel = DamageIncModel(self)
-        return self.damageIncModel
+        self.entities = dict()  # keys correstond to entity.addr, event.src or event.dest (source and destination of skills)
+        self.entitiesID = dict()  # keys are the instance ids which differ from entity.addr.these correspond to src_instid and dest_instid in the event as well as master_src_instid in an event for a pet/minion. values reflect an entity.addr
+        self.skills = dict()  # keys are skill.id, values are names
+        self.events = []  # chronological array of events
+        self.buffs = []
 
+        self.entityCount = -1
+        self.playerCount = 0
+        self.skillCount = -1
+        self.startOfEvents = -1
+        self.fileSize = 0
+        self.inst_id = 0
+        self.boss_addr = -1
+        self.bossAddrs = []
+        self.encounterLength = 0
+        self.startTime = 0
+
+        self.players = []
+        #self.damageSources = dict()
+
+        self.kill = False
+        self.bossDeath = False
+        self.lowestBossHealth = 10000
+
+        self.damageIncModel = None
+
+        self.quickComplete = False
+        self.fullComplete = False
+
+        self.endTime = -1
+
+        self.logLength = -1
+        # Header: 16 bytes
+        # Entity Count: 4 bytes
+        # Entity: 96 bytes
+        # Skill Count: 4 bytes
+        # Skill: 68 bytes
+        # Event: 64 bytes
 
     def parseQuick(self):
         with open(self.path, 'rb') as fh:
             self.getHeader(fh)
             self.getEntities(fh)
-            self.getDuration(fh)
+            self.findSuccessFail(fh)
+            self.getLogLength()
             fh.close()
 
             # for e in self.entities:
@@ -71,30 +78,58 @@ class Encounter(QObject):
             #     if self.entities[e].isPlayer:
             #         self.entities[e].print()
             #         self.logSignal.emit("%s on %s" % (self.entities[e].account, self.entities[e].character))
-        self.finished.emit(self)
+            self.quickComplete = True
+            self.quickFinished.emit(self)
 
     def parseFull(self):
         with open(self.path, 'rb') as fh:
-            self.getHeader(fh)
-            self.getEntities(fh)
+            if not self.quickComplete:
+                self.getHeader(fh)
+                self.getEntities(fh)
+                self.findSuccessFail(fh)
+                #self.getDuration(fh)
             self.getSkills(fh)
             self.getAllEvents(fh)
             fh.close()
             self.cleanData()
-            self.finished.emit(self)
+            self.quickComplete = True
+            self.fullComplete = True
+            self.fullFinished.emit(self)
 
     def getStartOfEvents(self, fh):
         if self.startOfEvents == -1:
             self.startOfEvents = self.startOfEvents = 16 + 4 + (self.getEntityCount(fh) * 96) + 4 + (self.getSkillCount(fh) * 68)
         return self.startOfEvents
 
-    def getDuration(self,fh):
+    def getLogLength(self):
+        with open(self.path, 'rb') as fh:
+            fh.seek(self.getStartOfEvents(fh), 0)
+            evt,success = self.parseEvent(fh.read(64))
+            encStart = evt.time
+            if evt.is_statechange == reference.cbtstatechange.CBTS_LOGSTART:
+                #evt.print()
+                self.startTime = evt.val
+            else:
+                while evt.is_statechange != reference.cbtstatechange.CBTS_LOGSTART:
+                    evt, success = self.parseEvent(fh.read(64))
+                    if evt.is_statechange == reference.cbtstatechange.CBTS_LOGSTART:
+                        self.startTime = evt.val
+                        break
 
-        fh.seek(self.getStartOfEvents(fh), 0)
-        startTime = struct.unpack("<Q", fh.read(8))[0]
-        fh.seek(-64, os.SEEK_END)
-        endTime = struct.unpack("<Q", fh.read(8))[0]
-        self.encounterLength = endTime - startTime
+            fh.seek(-64, os.SEEK_END)
+            encEnd = struct.unpack("<Q", fh.read(8))[0]
+            self.logLength = encEnd - encStart
+            fh.close()
+        return self.startTime, self.logLength
+
+    # def getDuration(self,fh):
+    #
+    #     fh.seek(self.getStartOfEvents(fh), 0)
+    #     self.startTime = struct.unpack("<Q", fh.read(8))[0]
+    #     fh.seek(-64, os.SEEK_END)
+    #     endTime = struct.unpack("<Q", fh.read(8))[0]
+    #     self.encounterLength = endTime - self.startTime
+    #     return self.startTime, self.encounterLength
 
     def getHeader(self, fh):
         fh.seek(0, 2)
@@ -117,7 +152,7 @@ class Encounter(QObject):
         self.getEntityCount(fh)
         fh.seek(20, 0)
         for i in range(self.entityCount):
-            e = entity()
+            e = Entity()
             addr = fh.read(8)
             e.addr = struct.unpack("<Q", addr)[0]
             e.setElite(fh.read(4), fh.read(4))
@@ -131,6 +166,8 @@ class Encounter(QObject):
                 self.players.append(e.addr)
             if e.id == self.inst_id:
                 self.boss_addr = e.addr
+            if self.boss_addr in self.entities and self.entities[self.boss_addr].name == e.name:
+                self.bossAddrs.append(e.addr)
 
     def getSkillCount(self, fh):
         if self.skillCount == -1:
@@ -145,27 +182,81 @@ class Encounter(QObject):
         fh.seek(16 + 4 + (self.getEntityCount(fh) * 96) + 4, 0)
         for i in range(self.skillCount):
             skill_id = struct.unpack("<i", fh.read(4))[0]
-            name = fh.read(64).decode('ascii').rstrip('\x00')
+            name = fh.read(64).decode('utf-8').rstrip('\x00')
             self.skills[skill_id] = name
+            # if name == "Confusion":
+            #    print("%s:%s" % (skill_id, name))
+            # print("%s %s" %(name, skill_id))
 
         # skills cleanup
         self.skills[1066] = "Resurrect"
         self.skills[1175] = "Bandage"
 
+
+    def findSuccessFail(self, fh):
+        # print("------")
+        if self.boss_addr == -1:
+            self.getEntities(fh)
+        # print(self.entities[self.boss_addr].name)
+        it = 1
+        valid = True
+
+        fh.seek(self.getStartOfEvents(fh),0)
+        e,v = self.parseEvent(fh.read(64))
+        startTime = e.time
+
+        while valid :
+            if self.fileSize < 64*it:
+                return
+            fh.seek((-64 * it), 2)
+            evt, valid = self.parseEvent(fh.read(64))
+
+            if it == 1:
+                self.encounterLength = evt.time-startTime
+
+            if evt.src in self.bossAddrs and evt.is_statechange == reference.cbtstatechange.CBTS_CHANGEDEAD:
+                self.lowestBossHealth = 0
+                self.kill = True
+                self.bossDeath = True
+                # print("kill")
+                self.encounterLength = evt.time-startTime
+                return
+
+            if evt.is_statechange == reference.cbtstatechange.CBTS_REWARD:
+                self.lowestBossHealth = 0
+                self.kill = True
+                #print("Reward")
+                self.encounterLength = evt.time-startTime
+
+            if evt.src in self.bossAddrs and evt.is_statechange == reference.cbtstatechange.CBTS_HEALTHUPDATE:
+                #print("lowest %s" % event.dest)
+                if evt.dest < self.lowestBossHealth and not self.kill:
+                    self.lowestBossHealth = evt.dest
+                if evt.dest > 5:
+                    return
+
+            if self.kill and evt.time < self.encounterLength-2000:
+                print("breakout")
+                return
+
+            it += 1
+
+
+
     def getAllEvents(self, fh):
 
-        #print("start events")
+        # print("start events")
         count = 0
         self.progressSignal.emit('Getting Events...', fh.tell()/self.fileSize)
         logCounter = 0
         fh.seek(self.getStartOfEvents(fh), 0)
 
-        while(1): #breakout at end of file on len(time) where "test"
+        while 1 : #breakout at end of file on len(time) where "test"
             evt, valid = self.parseEvent(fh.read(64))
             if not valid:
                 break
 
-            #evt.print()
+            # evt.print()
 
             self.events.append(evt)
 
@@ -184,7 +275,7 @@ class Encounter(QObject):
     def parseEvent(self, bytes):
         e = event()
         if len(bytes) < 64:
-            #print(len(bytes))
+            # print(len(bytes))
             return e, False
 
         e.time = struct.unpack("<Q", bytes[0:8])[0]
@@ -226,7 +317,7 @@ class Encounter(QObject):
 
         eventCounter = 0
         logCounter = 0
-
+        startTime = 0
         for evt in self.events:
             #print(str(eventCounter))
             if logCounter >= 1000:
@@ -247,25 +338,28 @@ class Encounter(QObject):
             if self.skipEvent(evt.is_statechange):
                 continue
 
-            #unknown src event
+            # unknown src event
             if evt.src not in self.entities:
-                #print("unknown src %i" % unknownSrcCount)
-                #unknownSrcCount += 1
-                #evt.print()
+                # print("unknown src %i" % unknownSrcCount)
+                # unknownSrcCount += 1
+                # evt.print()
                 continue
 
-            # set first/last seen ticks for each entity
-            if self.entities[evt.src].firstSeen == -1:
-                self.entities[evt.src].firstSeen = evt.time
-            self.entities[evt.src].lastSeen = evt.time
+            ent:Entity = self.entities[evt.src]
+            if ent.firstSeen == -1:
+                ent.firstSeen = evt.time
+            ent.lastSeen = evt.time
 
             # relate instids to addrs
             if not evt.is_statechange:
                 if evt.src in self.entities:
-                    if evt.src_instid not in self.entities[evt.src].inst_id:
-                        self.entities[evt.src].inst_id.append(evt.src_instid)
+                    if evt.src_instid not in ent.inst_id:
+                        ent.inst_id.append(evt.src_instid)
                     if evt.src_instid not in self.entitiesID:
                         self.entitiesID[evt.src_instid] = evt.src
+
+            # if evt.skill_id == 740 and evt.is_buffremove == 1 and evt.time < 110000:
+            #     self.printPrettyEvent(evt)
 
         eventCounter = 0
         logCounter = 0
@@ -289,57 +383,143 @@ class Encounter(QObject):
                 #self.entities[masterAddr].print()
 
             #distribute events
+
+            # rewardTime = -1
+            # bossDeadTime = -1
+            # if evt.is_statechange == reference.cbtstatechange.CBTS_REWARD:
+            #     self.gotReward = True
+            #     #print("reward %s" % evt.time)
+            #     rewardTime = evt.time
+            #
+            # if evt.src == self.boss_addr and evt.is_statechange == reference.cbtstatechange.CBTS_CHANGEDEAD:
+            #     self.bossDeath = True
+            #     #print("boss")
+            #     bossDeadTime = evt.time
+            #
+            # if bossDeadTime > 0:
+            #     self.encounterLength = bossDeadTime
+            # elif rewardTime > 0:
+            #     #print("else")
+            #     self.encounterLength = rewardTime
+
+            if evt.time >= self.encounterLength:
+                break
+
+            entityCheck = False
+
+            if evt.src in self.entities and evt.dest in self.entities:
+
+                entityCheck = True
+
             if evt.src == evt.dest:
                 if evt.src in self.entities:
-                    self.entities[evt.src].addEvent(evt)
+                    self.entities[evt.src].addEvent(evt, entityCheck)
             else:
                 if evt.src in self.entities:
-                    self.entities[evt.src].addEvent(evt)
+                    self.entities[evt.src].addEvent(evt, entityCheck)
                 if evt.dest in self.entities:
-                    self.entities[evt.dest].addEvent(evt)
+                    self.entities[evt.dest].addEvent(evt, entityCheck)
 
-            if evt.is_statechange == reference.cbtstatechange.CBTS_REWARD:
-                self.result = "Success"
+            # if evt.skill_id == 34362:
+            #     self.printPrettyEvent(evt)
+            #     evt.print()
+            # if evt.is_buff and not evt.is_activation and evt.is_buffremove == 2:
+            #     self.printPrettyEvent(evt)
+            #     evt.print()
+            #     print("")
+            #     if logCounter % 100 == 0:
+            #         None
 
-        self.findDamageSources()
+#        self.findDamageSources()
+
+
+        # for evt in self.events:
+        #     if evt.time > 314000 and evt.time < 314200:
+        #         self.printPrettyEvent(evt)
+
+        for player in self.players:
+            p: Entity = self.entities[player]
+            for minion in p.minions:
+                m:Entity = self.entities[minion]
+                for dest in m.damage.foes:
+                    p.damage.addMinionDamage(dest, m.damage.foes[dest].totalDamageIn)
+
+        # for e in self.entities:
+        #     ent: entity = self.entities[e]
+        #     if ent.name == self.entities[self.boss_addr].name:
+        #         ent.print()
+        #         print("-------------------------------------------------")
+        #
+        # for p in self.players:
+        #     pl = self.entities[p]
+        #     print(pl.name)
+        #     for e in self.entities:
+        #         ent:entity = self.entities[e]
+        #         if ent.id == self.inst_id:
+        #             print("%s %s" % (ent.name, pl.damageOut[e][entity.ENTITY_TOTAL_DAMAGE]))
+
         self.progressSignal.emit("Done", 100)
-        #for evt in self.events:
-        #    if evt.src in self.entities and self.entities[evt.src].name == 'Soulless Horror':
-        #        evt.print()
 
-        #print(len(self.entities))
-        #print(len(self.entitiesID))
+        #for player in self.players:
+            #print("%s last seen %s" % (self.entities[player].character, self.entities[player].lastSeen))
+            #continue
+            #if True:
+                #None
+                #break
 
-    def findDamageSources(self):
-        eventCounter = 0
-        logCounter = 0
+            # p:Entity = self.entities[player]
+            # if p.character != "aaaa":
+            #     None
+            #     continue
+            #
+            # print("--------------------------------------")
+            # print(p.name)
+            #
+            # for skill in p.damageOutTotals:
+            #     if skill < 0:
+            #         continue
+            #     s = self.skills[skill]
+            #     print("%s: %s Hits %s" % (s, p.damageOutTotals[skill][Entity.SKILL_TOTAL_DAMAGE], p.damageOutTotals[skill][Entity.SKILL_IMPACT]))
+            #
+            # dmg = p.damageOut
+            #
+            # for d in dmg:
+            #     if d in self.entities:
+            #         print("")
+            #         print("%s %s" % (d, self.entities[d].inst_id))
+            #         print("Target: %s: %s" % (self.entities[d].name, dmg[d][Entity.ENTITY_TOTAL_DAMAGE]))
+            #         print("%s - %s" % (self.entities[d].firstSeen, self.entities[d].lastSeen))
+            #     for s in dmg[d]:
+            #         if s in self.skills:
+            #             print("%s: %s" % (self.skills[s], dmg[d][s][Entity.SKILL_TOTAL_DAMAGE]))
 
-        self.damageSources['self'] = []
-        self.damageSources[self.boss_addr] = []
-
-        for ent in self.entities:
-            e = self.entities[ent]
-            if not e.isPlayer:
-                continue
-
-            if logCounter >= 10:
-                self.progressSignal.emit(self.FINDING_DAMAGE_SOURCES, 100 * eventCounter / len(self.events))
-                logCounter = 0
-            else:
-                logCounter += 1
-            eventCounter += 1
-
-            for src in e.damageInc:
-                if src == e.addr:
-                    continue
-                if src not in self.damageSources:
-                    self.damageSources[src] = []
-                for skill in e.damageInc[src]:
-                    if skill not in self.damageSources[src]:
-                        self.damageSources[src].append(skill)
-
-
-
+    # def findDamageSources(self):
+    #     eventCounter = 0
+    #     logCounter = 0
+    #
+    #     self.damageSources['self'] = []
+    #     self.damageSources[self.boss_addr] = []
+    #
+    #     for ent in self.entities:
+    #         e = self.entities[ent]
+    #         if not e.isPlayer:
+    #             continue
+    #
+    #         if logCounter >= 10:
+    #             self.progressSignal.emit(self.FINDING_DAMAGE_SOURCES, 100 * eventCounter / len(self.events))
+    #             logCounter = 0
+    #         else:
+    #             logCounter += 1
+    #         eventCounter += 1
+    #
+    #         for src in e.damageInc:
+    #             if src == e.addr:
+    #                 continue
+    #             if src not in self.damageSources:
+    #                 self.damageSources[src] = []
+    #             for skill in e.damageInc[src]:
+    #                 if skill not in self.damageSources[src]:
+    #                     self.damageSources[src].append(skill)
 
     def skipEvent(self, state):
         if state == reference.cbtstatechange.CBTS_LANGUAGE or \
@@ -350,245 +530,59 @@ class Encounter(QObject):
             return 1
 
     #just some testing code
-    def validateEvents(self):
-        for e in self.events:
-            error = 0
-            if e.iff < 0 or e.iff > 2:
-                print("iff out of bounds")
-                error = 1
-            if e.result < 0 or e.result > 8:
-                print("result out of bounds")
-                error = 1
-            if e.is_activation < 0 or e.is_activation > 5:
-                print("activation out of bounds")
-                error = 1
-            if e.is_statechange < 0 or e.is_statechange > 17:
-                print("statechange out of bounds")
-                error = 1
-            if e.is_buffremove < 0 or e.is_buffremove > 3:
-                print("buffremove out of bounds")
-                error = 1
-            if error:
-                print("index: %i" % self.events.index(e))
-                e.print()
+    # def validateEvents(self):
+    #     for e in self.events:
+    #         error = 0
+    #         if e.iff < 0 or e.iff > 2:
+    #             print("iff out of bounds")
+    #             error = 1
+    #         if e.result < 0 or e.result > 8:
+    #             print("result out of bounds")
+    #             error = 1
+    #         if e.is_activation < 0 or e.is_activation > 5:
+    #             print("activation out of bounds")
+    #             error = 1
+    #         if e.is_statechange < 0 or e.is_statechange > 17:
+    #             print("statechange out of bounds")
+    #             error = 1
+    #         if e.is_buffremove < 0 or e.is_buffremove > 3:
+    #             print("buffremove out of bounds")
+    #             error = 1
+    #         if error:
+    #             print("index: %i" % self.events.index(e))
+    #             e.print()
 
+    def getBossDps(self, player):
+        return self.getBossDamage(player) /(self.encounterLength/1000)
+
+    def getBossDamage(self, player):
+        p: Entity = self.entities[player]
+        dmg = 0
+        for target in self.bossAddrs:
+
+            if target in p.damage.foes:
+                dmg += p.damage.foes[target].totalDamageIn
+                # print(p.character)
+                # print("%s %s %s" %(self.entities[target].name, p.damage.foes[target].totalDamageIn,dmg))
+        return dmg
+
+    def getTotalDps(self, player):
+        p: Entity = self.entities[player]
+        dmg = p.damage.totalOut
+        return dmg/(self.encounterLength/1000)
 
 #if __name__ == '__main__':
     #p = Parser('./test.evtc')
 
-class DamageIncModel(QAbstractItemModel):
-    encounter = None
-    entryDict = dict()
-    SELF_INFLICTED = -100
+    def printPrettyEvent(self, evt:event):
+        src = evt.src
+        if evt.src in self.entities:
+            src = self.entities[evt.src].name
 
-    DEFAULT_TEXT = "-"
+        dest = evt.dest
+        if evt.dest in self.entities:
+            dest = self.entities[evt.dest].name
 
+        skill = self.skills.get(evt.skill_id, evt.skill_id)
 
-    def __init__(self, encounter, parent = None):
-        super(DamageIncModel, self).__init__()
-        self.encounter = encounter
-        self.root = TreeNode()
-        self.initializeData()
-
-    def initializeData(self):
-
-        self.root.addNode(TreeNode(self.SELF_INFLICTED, TreeNode.SRC_TYPE))
-        self.root.addNode(TreeNode(self.encounter.boss_addr, TreeNode.SRC_TYPE))
-        for index, player in enumerate(self.encounter.players):
-            p = self.encounter.entities[player]
-            #print(p.name)
-            for src in p.damageInc:
-                if src == p.addr:
-                    id = self.SELF_INFLICTED
-                else:
-                    id = src
-                srcNode = self.root.addNode(TreeNode(id, TreeNode.SRC_TYPE))
-
-                for skill in p.damageInc[src]:
-                    # if skill == entity.SRC_INC_TOTAL_DAMAGE:
-                    #     while len(srcNode.data) < index:
-                    #         srcNode.addData("")
-                    #     srcNode.addData(p.damageInc[src][entity.SRC_INC_TOTAL_DAMAGE])
-                    #     continue
-                    if skill != entity.SRC_INC_TOTAL_DAMAGE:
-                        srcNode.addNode(TreeNode(skill, TreeNode.SKILL_TYPE))
-                    # while len(skNode.data) < index:
-                    #     skNode.addData(0)
-                    #skNode.addData(p.damageInc[src][skill][entity.SKILL_INC_TOTAL_DAMAGE])
-        None
-
-    def parent(self, childIndex):
-        if not childIndex.isValid():
-            return QModelIndex()
-
-        childNode = childIndex.internalPointer()
-        if childNode.parent == self.root:
-            return QModelIndex()
-
-        return self.createIndex(childNode.parent.row, 0, childNode.parent)
-
-    def index(self, row, column, parent):
-        parentNode = self.root
-
-        if parent.isValid():
-            parentNode = parent.internalPointer()
-
-        if row < len(parentNode.children) and column < len(self.encounter.players) + 1:
-            return self.createIndex(row, column, parentNode.children[row])
-        else:
-            return QModelIndex()
-
-    def headerData(self, section, orientation, role):
-        #if orientation != Qt.Vertical:
-        #    return QVariant()
-        if role == Qt.DisplayRole:
-            if section == 0:
-                return "%s\n%s\n%s" % (self.encounter.entities[self.encounter.boss_addr].name,
-                                   tools.prettyTimestamp(self.encounter.encounterLength),
-                                   self.encounter.result)
-            else:
-                return self.encounter.entities[self.encounter.players[section - 1]].name.replace(":", "\n")
-
-    def getSrc(self, index):
-        node = index.internalPointer()
-        id = None
-        if node.type == TreeNode.SRC_TYPE:
-            id = node.id
-        if node.type == TreeNode.SKILL_TYPE:
-            id = node.parent.id
-
-        if id == self.SELF_INFLICTED:
-            return self.encounter.players[index.column() - 1], "Self Inflicted"
-        elif id == None:
-            return -1, "Unknown"
-        else:
-            return id, self.encounter.entities[id].name
-
-    def data(self, index, role):
-        if not index.isValid():
-            return QVariant()
-
-        node = index.internalPointer()
-
-        #if role == Qt.SizeHintRole or role == Qt.FontRole:
-        #    return
-        txt = ""
-        playerId = self.encounter.players[index.column() - 1]
-        player = self.encounter.entities[playerId]
-        srcId, srcName = self.getSrc(index)
-
-        if role == Qt.DisplayRole:
-            if index.column() == 0:
-                if node.type == TreeNode.SRC_TYPE:
-                    txt = srcName
-                if node.type == TreeNode.SKILL_TYPE:
-                    txt = self.encounter.skills[node.id]
-            else:
-                try:
-                    if node.type == TreeNode.SRC_TYPE:
-                            txt = player.damageInc[srcId][entity.SRC_INC_TOTAL_DAMAGE]
-                    if node.type == TreeNode.SKILL_TYPE:
-                            txt = player.damageInc[srcId][node.id][entity.SKILL_INC_TOTAL_DAMAGE]
-                except KeyError:
-                    txt = self.DEFAULT_TEXT
-                #txt = node.data[index.column() - 1]
-            return txt
-
-        if role == Qt.ToolTipRole:
-            txt += srcName
-            srcInfoText = ""
-            if index.column() == 0:
-                squadDamage = 0
-                if node.type == TreeNode.SRC_TYPE:
-                    if node.id != self.SELF_INFLICTED:
-                        first = self.encounter.entities[node.id].firstSeen
-                        last = self.encounter.entities[node.id].lastSeen
-                        srcInfoText += "Spawn time: %s\n" % tools.prettyTimestamp(first)
-                        srcInfoText += "Lifespan: %s" %tools.prettyTimestamp(last - first)
-                    for p in self.encounter.players:
-                        try:
-                            if node.id == self.SELF_INFLICTED:
-                                squadDamage += self.encounter.entities[p].damageInc[p][entity.SRC_INC_TOTAL_DAMAGE]
-                            else:
-                                squadDamage += self.encounter.entities[p].damageInc[srcId][entity.SRC_INC_TOTAL_DAMAGE]
-                        except KeyError:
-                            None
-                if node.type == TreeNode.SKILL_TYPE:
-                    txt += "\n%s" % self.encounter.skills[node.id]
-                    for p in self.encounter.players:
-                        try:
-                            if node.parent.id == self.SELF_INFLICTED:
-                                squadDamage += self.encounter.entities[p].damageInc[p][node.id][entity.SKILL_INC_TOTAL_DAMAGE]
-                            else:
-                                squadDamage += self.encounter.entities[p].damageInc[srcId][node.id][entity.SKILL_INC_TOTAL_DAMAGE]
-                        except KeyError:
-                            None
-
-                txt += "\n-Total Squad Damage: %s" % str(squadDamage)
-                if len(srcInfoText) > 0:
-                    txt += "\n\n" + srcInfoText
-            else:
-                txt = self.encounter.entities[playerId].character + "\n" + txt
-                if node.type == TreeNode.SRC_TYPE:
-                    txt += "\n-Total Damage: "
-                    if srcId in player.damageInc:
-                        txt += str(player.damageInc[srcId][entity.SRC_INC_TOTAL_DAMAGE])
-                    else:
-                        txt += self.DEFAULT_TEXT
-                if node.type == TreeNode.SKILL_TYPE:
-                    try:
-                        sk = player.damageInc[node.parent.id][node.id]
-                        txt += "\n-%s: %s" %(self.encounter.skills[node.id], sk.get(entity.SKILL_INC_TOTAL_DAMAGE, 0))
-                        txt += "\n-Impacts Incoming: %s" % sk.get(entity.SKILL_INC_IMPACT, 0)
-                        txt += "\n--Blocked: %s" % sk.get(entity.RESULT_MODIFIER + reference.cbtresult.CBTR_BLOCK, 0)
-                        txt += "\n--Evaded: %s" % sk.get(entity.RESULT_MODIFIER + reference.cbtresult.CBTR_EVADE, 0)
-                        txt += "\n--Missed: %s" % sk.get(entity.RESULT_MODIFIER + reference.cbtresult.CBTR_BLIND, 0)
-                    except KeyError:
-                        None
-            return txt
-
-
-    def rowCount(self, parent):
-        if not parent.isValid():
-            return len(self.root.children)
-
-        if parent.isValid():
-            return len(parent.internalPointer().children)
-
-    def columnCount(self, parent):
-        return self.encounter.playerCount + 1
-
-class TreeNode():
-
-    SRC_TYPE = -100
-    SKILL_TYPE = -101
-
-    def __init__(self, id = -1, type = -1, parent = None):
-        #self.data = []
-        self.id = id
-        self.parent = parent
-        self.children = []
-        self.type = type
-        self.row = -1
-
-    def addNode(self, node):
-        for c in self.children:
-            if c.id == node.id:
-                return c
-        self.children.append(node)
-        node.parent = self
-        node.row = len(self.children) - 1
-        return node
-
-    # def addData(self, data):
-    #     self.data.append(data)
-
-    def getChildById(self, id):
-        for c in self.children:
-            if c.id == id:
-                return c
-
-    def indexOf(self, id):
-        for i in range(self.children):
-            if self.children.id == id:
-                return i
+        print("Time: %s\tSource: %s\tDest: %s\tSkill: %s\tDuration: %s\tOverstack: %s\tRemove: %s" % (evt.time, src, dest, skill, evt.val, evt.overstack_val, evt.is_buffremove))
