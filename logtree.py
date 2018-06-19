@@ -11,6 +11,7 @@ from encounter import Encounter
 from encountercachehandler import EncounterCacheHandler, EncounterInfo
 
 class LogTree(QTreeView):
+    tableGenerated = pyqtSignal()
     def __init__(self, parent):
         super(LogTree, self).__init__(parent)
 
@@ -28,14 +29,23 @@ class LogTree(QTreeView):
 
     def setup(self, path = ""):
         self.path = path
-        self.logBrowserModel.finished.connect(self.linkModel)
+        self.logBrowserModel.treeLoaded.connect(self.linkModel)
+        self.logBrowserModel.finished.connect(self.finishSetup)
         job = Job(self.logBrowserModel.setup, self.path)
         Worker.ThreadPool.start(job)
 
     def linkModel(self):
         self.sortModel.setSourceModel(self.logBrowserModel)
         self.setModel(self.sortModel)
+
         #self.setModel(self.logBrowserModel)
+
+    def getPlayerList(self):
+        return self.logBrowserModel.players
+
+    def finishSetup(self):
+        self.sortModel.filterStartTime = self.logBrowserModel.earliestLog
+        self.tableGenerated.emit()
 
     def getModel(self):
         return self.logBrowserModel
@@ -48,8 +58,9 @@ class LogTree(QTreeView):
         self.sortModel.filterNew = flag
         self.sortModel.invalidateFilter()
 
-    def filterName(self, name):
-        self.sortModel.filterChar = name
+    def filterPlayers(self, acc, char):
+        self.sortModel.filterAccount = acc
+        self.sortModel.filterChar = char
         self.sortModel.invalidateFilter()
 
     def filterStartTime(self, start):
@@ -62,7 +73,8 @@ class LogTree(QTreeView):
 
     def getPath(self, index):
         # return index.internalPointer().path
-        return self.sortModel.mapToSource(index).internalPointer().path
+        p = self.sortModel.mapToSource(index).internalPointer().path
+        return p
 
     def getFilterStartTime(self):
         return self.sortModel.filterStartTime
@@ -78,7 +90,8 @@ class FilterModel(QSortFilterProxyModel):
         self.filterEndTime = time.time()
         self.filterSuccess = False
         self.filterNew = False
-        self.filterChar = None
+        self.filterAccount = ""
+        self.filterChar = ""
 
     def filterAcceptsRow(self, source_row: int, source_parent: QModelIndex):
         p = source_parent.internalPointer()
@@ -90,10 +103,12 @@ class FilterModel(QSortFilterProxyModel):
             if node.result != LogBrowserModel.TXT_SUCCESS:
                 return False
 
-        if self.filterChar is not None:
-            encounter = Encounter(node.path)
-            encounter.parseQuick()
-            if self.filterChar not in encounter.players:
+        if self.filterAccount is not "":
+            if self.filterAccount not in node.accounts:
+                return False
+
+        if self.filterChar is not "":
+            if self.filterChar not in node.characters:
                 return False
 
         if self.filterNew:
@@ -113,6 +128,7 @@ class FilterModel(QSortFilterProxyModel):
 
 class LogBrowserModel(QAbstractItemModel):
     finished = pyqtSignal()
+    treeLoaded = pyqtSignal()
     progressSignal = pyqtSignal(str, int)
     dataupdated = pyqtSignal(QModelIndex, QModelIndex)
     setProgressIndefinite = pyqtSignal(bool)
@@ -143,8 +159,9 @@ class LogBrowserModel(QAbstractItemModel):
         self.encounterCache = None
         self.signalTimer = 0
         self.counter = 0
+        self.earliestLog = self.currentTime
 
-        self.players = dict()
+        self.players = []
 
     def setSelected(self, index: QModelIndex):
         self.currentSelected = index
@@ -154,8 +171,12 @@ class LogBrowserModel(QAbstractItemModel):
         self.uploadToAll = flag
 
     def setup(self, path):
+        t = time.time()
+        loadStartTime = t
+        self.earliestLog = t
         self.root = LogBrowserNode()
         self.encounterCache = EncounterCacheHandler()
+        self.players = dict()
         #self.startTime = time.time()
         self.rootPath = path
         self.counter = 0
@@ -163,11 +184,15 @@ class LogBrowserModel(QAbstractItemModel):
         self.logCount = 0
         self.setProgressIndefinite.emit(True)
         self.setupTree(self.root, self.rootPath)
+        print("Log Count: %s" % self.logCount)
         self.counter = 0
-        self.finished.emit()
+        self.treeLoaded.emit()
         self.setProgressIndefinite.emit(False)
         self.quickParseAll(self.root)
         self.progressSignal.emit("Done", 100)
+        print("Load Time: %s" % (time.time() - loadStartTime))
+        self.finished.emit()
+        #print(self.players)
         # print(time.time() - self.startTime)
 
 
@@ -185,9 +210,9 @@ class LogBrowserModel(QAbstractItemModel):
                     parent.addChild(node)
             elif os.path.isfile(file):
                 name,ext = os.path.splitext(f)
-                if ext == ".evtc":
+                if ext == ".evtc" or ext == ".zip":
                     #print(file)
-                    node.text = name
+                    node.text = name.replace(".evtc", "")
                     node.isLog = True
                     for h in self.buttonHeaders:
                         node.checkables[h] = False
@@ -211,8 +236,25 @@ class LogBrowserModel(QAbstractItemModel):
             node.lowestBossHealth = encounterInfo.lastBossHealth
             node.time = encounterInfo.length
             node.timeStamp = encounterInfo.timestamp
+            if node.timeStamp < self.earliestLog:
+                self.earliestLog = node.timeStamp
             i1 = self.createIndex(node.row, 0, node)
             i2 = self.createIndex(node.row, len(self.headers), node)
+
+            for a in encounterInfo.accounts:
+                pl = encounterInfo.accounts[a]
+                node.accounts.append(a)
+                node.characters.append(pl['character'])
+                if a not in self.players:
+                    self.players[a] = dict()
+                    self.players[a]['logcount'] = 0
+                    self.players[a]['characters'] = dict()
+                if pl['character'] not in self.players[a]['characters']:
+                    self.players[a]['characters'][pl['character']] = dict()
+                    self.players[a]['characters'][pl['character']]['prof'] = pl['prof']
+                    self.players[a]['characters'][pl['character']]['elite'] = pl['elite']
+                self.players[a]['logcount'] = self.players[a]['logcount'] + 1
+                None
             self.dataupdated.emit(i1, i2)
 
             t = time.time()
@@ -337,6 +379,8 @@ class LogBrowserNode():
         self.progress = 0
         self.isLog = False
         self.isNew = False
+        self.accounts = []
+        self.characters = []
 
     def addChild(self, node):
         node.parent = self

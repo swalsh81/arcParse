@@ -8,6 +8,7 @@ import worker as Worker
 from worker import Job
 
 from encounterpreviewtable import EncounterPreviewTable
+from playersortwidget import PlayerSortWidget
 from logtree import LogTree, LogBrowserModel
 from datedialog import DateDialog
 import os
@@ -41,6 +42,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.dateDialog.getCalendar().selectionChanged.connect(self.setFilterDate)
         self.currentDateButton = None
 
+        self.playerSortWidget.setBoxes(self.accountComboBox, self.characterComboBox)
+        self.playerSortWidget.selectionChanged.connect(self.setPlayerSort)
+
     def showStartDateDialog(self):
         if not self.positionDateDialog(self.startDateButton):
             return
@@ -68,6 +72,8 @@ class MainWindow(QtWidgets.QMainWindow):
             date = QDateTime(date).addDays(1).toUTC().toSecsSinceEpoch()
             self.logBrowserTable.filterEndTime(date)
 
+    def setPlayerSort(self, account, character):
+        self.logBrowserTable.filterPlayers(account, character)
 
     def positionDateDialog(self, button):
         if self.currentDateButton == button:
@@ -103,6 +109,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         logModel:LogBrowserModel = self.logBrowserTable.getModel()
         logModel.progressSignal.connect(self.setProgress)
+        self.logBrowserTable.tableGenerated.connect(self.logsLoaded)
         logModel.setProgressIndefinite.connect(self.setProgressBarStatus)
 
         self.logBrowserTable.clicked.connect(self.showEncounterDetails)
@@ -111,11 +118,20 @@ class MainWindow(QtWidgets.QMainWindow):
         self.filterSuccessCheck.stateChanged.connect(self.logBrowserTable.filterSuccess)
         self.filterNewCheck.stateChanged.connect(self.logBrowserTable.filterNew)
 
+    def logsLoaded(self):
+        self.startDateButton.setText(QDateTime.fromSecsSinceEpoch(self.logBrowserTable.getFilterStartTime(),
+                                                   Qt.UTC).toLocalTime().date().toString())
+        self.endDateButton.setText(QDateTime.fromSecsSinceEpoch(self.logBrowserTable.getFilterEndTime(),
+                                                                  Qt.UTC).toLocalTime().date().toString())
+
+        self.playerSortWidget.setPlayers(self.logBrowserTable.getPlayerList())
+
     def showEncounterDetails(self, index:QModelIndex):
         path = self.logBrowserTable.getPath(index)
         name, ext = os.path.splitext(path)
-        if ext != ".evtc":
+        if ext not in [".evtc", ".zip"]:
             return
+        self.encounterPreviewTable.model.progressSignal.connect(self.setProgress)
         self.encounterPreviewTable.setup(path)
         # self.encounterPreviewTable.clicked.connect(self.viewPlayerDetails)
 

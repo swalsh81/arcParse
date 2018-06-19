@@ -1,6 +1,6 @@
 from PyQt5.QtCore import pyqtSignal, QObject
 
-import os, sqlite3
+import os, sqlite3, json
 
 import worker
 
@@ -32,7 +32,7 @@ class EncounterCacheHandler(QObject):
     def getConnection(self):
         self.lastAccessed = time.time()
         if self.connection is None or self.init is False:
-            print("connecting")
+            print("Open Cache")
             path = os.path.abspath(self.getResourceDir() + "/" + DB_URL)
             self.connection = sqlite3.connect(path)
             self.initDB(self.connection)
@@ -41,7 +41,7 @@ class EncounterCacheHandler(QObject):
 
     def startConnectionTimeout(self):
         self.timer.enter(self.timerTick, 1, self.doTick)
-        print("start")
+        #print("start")
         job = worker.Job(self.timer.run)
         worker.ThreadPool.start(job)
 
@@ -49,13 +49,13 @@ class EncounterCacheHandler(QObject):
         self.timerTicked.emit()
 
     def checkTimer(self):
-        print("check")
+        #print("check")
         if self.lastAccessed + self.timerTick*2 < time.time():
             self.connection.close()
             self.connection = None
-            print("connection closed")
+            print("Close Cache")
         else:
-            print("reset")
+            #print("reset")
             self.startConnectionTimeout()
 
     def initDB(self, conn):
@@ -71,7 +71,8 @@ class EncounterCacheHandler(QObject):
                             length INT,
                             raidar TEXT,
                             dpsreport TEXT,
-                            instance TEXT    
+                            instance TEXT,
+                            players BLOB    
                             )""")
 
         # c.execute("""CREATE TABLE IF NOT EXIST players(
@@ -119,8 +120,23 @@ class EncounterCacheHandler(QObject):
 
         if enc is None:
             e.parseQuick()
-            info = EncounterInfo(e.startTime, loglength, path, e.kill, e.lowestBossHealth, e.encounterLength, "", "", e.entities[e.boss_addr].name)
-            c.execute("""INSERT INTO encounters VALUES(?,?,?,?,?,?,?,?,?)""",(e.startTime, loglength, path, e.kill, e.lowestBossHealth, e.encounterLength, "", "", e.entities[e.boss_addr].name))
+            playerDict = {}
+            for p in e.players:
+                # playerDict += "%s::%s" % (e.entities[p].account, e.entities[p].character)
+                # if i < len(e.players) - 1:
+                #     playerDict += "\n"
+                playerDict[e.entities[p].account] = {}
+                playerDict[e.entities[p].account]['character'] = e.entities[p].character
+                playerDict[e.entities[p].account]['prof'] = e.entities[p].prof
+                playerDict[e.entities[p].account]['elite'] = e.entities[p].elite
+
+            playerDict = json.dumps(playerDict)
+
+            #print(playerDict)
+
+
+            info = EncounterInfo(e.startTime, loglength, path, e.kill, e.lowestBossHealth, e.encounterLength, "", "", e.entities[e.boss_addr].name, playerDict)
+            c.execute("""INSERT INTO encounters VALUES(?,?,?,?,?,?,?,?,?,?)""",(e.startTime, loglength, path, e.kill, e.lowestBossHealth, e.encounterLength, "", "", e.entities[e.boss_addr].name,playerDict))
             conn.commit()
             info.new = True
         #
@@ -143,8 +159,8 @@ class EncounterCacheHandler(QObject):
 
         return info
 
-class EncounterInfo():
-    def __init__(self, timestamp = -1, loglength = -1, fileName = "", kill = "Unknown", lastBossHealth = -1, length = -1, raidar = "", dpsreport = "", instance = ""):
+class EncounterInfo:
+    def __init__(self, timestamp = -1, loglength = -1, fileName = "", kill = "Unknown", lastBossHealth = -1, length = -1, raidar = "", dpsreport = "", instance = "", playerDict = dict()):
         self.timestamp = timestamp
         self.loglength = loglength
         self.fileName = fileName
@@ -155,6 +171,17 @@ class EncounterInfo():
         self.dpsreport = dpsreport
         self.instance = instance
         self.new = False
+        self.accounts = json.loads(playerDict)
+
+    # def unpackPlayers(self, players:str):
+    #     pl = []
+    #     players = players.split("\n")
+    #     for i,p in enumerate(players):
+    #         split = p.split("::")
+    #         pl.append([])
+    #         pl[i].append(split[0])
+    #         pl[i].append(split[1])
+    #     return pl
 
 if __name__ == '__main__':
     EncounterCacheHandler().getInfo("E:/arcdps.cbtlogs/Xera/20180430-214441.evtc")

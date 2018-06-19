@@ -1,6 +1,6 @@
 from PyQt5.QtWidgets import QTableView, QHeaderView
 from PyQt5.QtGui import QPixmap, QColor, QLinearGradient, QBrush
-from PyQt5.QtCore import QAbstractItemModel, QModelIndex, QVariant, Qt, QSize, QSortFilterProxyModel
+from PyQt5.QtCore import QAbstractItemModel, QModelIndex, QVariant, Qt, QSize, QSortFilterProxyModel, pyqtSignal
 
 import worker as Worker
 from worker import Job
@@ -19,6 +19,7 @@ class EncounterPreviewTable(QTableView):
         self.sortModel = QSortFilterProxyModel()
         self.model.dataChanged.connect(self.compact)
         self.horizontalHeader().sectionResized.connect(self.calcHeader)
+        self.horizontalHeader().sectionClicked.connect(self.model.setSortColumn)
 
     def setup(self, path):
         self.model.setup(path)
@@ -64,6 +65,8 @@ class EncounterInfoModel(QAbstractItemModel):
 
     fullOnlyHeaders = [TXT_DOWN, TXT_DEAD, TXT_DPS, TXT_BOSS_DPS, TXT_DMG_TOTAL, TXT_DMG_BOSS]
 
+    progressSignal = pyqtSignal(str, int)
+
     def __init__(self, parent = None):
         super(EncounterInfoModel, self).__init__()
         self.encounter = None
@@ -74,10 +77,18 @@ class EncounterInfoModel(QAbstractItemModel):
         self.totalWidth = 0
         self.headerWidths = []
         self.ready = False
+        self.sortColumn = 4
+
+        self.callback = None
+
+    def setSortColumn(self, section):
+        if self.headers[section] in [self.TXT_DPS, self.TXT_DMG_TOTAL, self.TXT_DMG_BOSS, self.TXT_BOSS_DPS]:
+            self.sortColumn = section
+            self.findHighestValue()
 
     def reset(self):
         self.encounter = None
-        self.nodes.clear()
+        self.nodes = []
         self.path = ""
 
     def setup(self, path):
@@ -85,9 +96,13 @@ class EncounterInfoModel(QAbstractItemModel):
         self.reset()
         self.path = path
         self.encounter = Encounter(path)
+        self.encounter.progressSignal.connect(self.emitProgress)
         self.encounter.quickFinished.connect(self.quickParseFinished)
         job = Job(self.encounter.parseQuick)
         Worker.ThreadPool.start(job)
+
+    def emitProgress(self, s,i):
+        self.progressSignal.emit(s,i)
 
     def getEncounter(self):
         return self.encounter
@@ -179,7 +194,7 @@ class EncounterInfoModel(QAbstractItemModel):
             if self.highestRowValue == 0:
                 barBound = 0
             else:
-                barBound = self.data(self.createIndex(index.row(), 4, node), Qt.DisplayRole)/self.highestRowValue
+                barBound = self.data(self.createIndex(index.row(), self.sortColumn, node), Qt.DisplayRole)/self.highestRowValue
 
             profColor = QColor(*reference.CLASS_COLORS[p.prof], 60)
             if rightBound <= barBound:
@@ -208,10 +223,10 @@ class EncounterInfoModel(QAbstractItemModel):
         #     if self.highestRowValue < d:
         #         self.highestRowValue = d
         for i in range(0, self.rowCount()):
-            val = self.data(self.createIndex(i, 4, self.nodes[i]), Qt.DisplayRole)
+            val = self.data(self.createIndex(i, self.sortColumn, self.nodes[i]), Qt.DisplayRole)
             if self.highestRowValue < val:
                 self.highestRowValue = val
-        print("Highest: %s" % self.highestRowValue)
+        #print("Highest: %s" % self.highestRowValue)
 
     def headerData(self, section: int, orientation: Qt.Orientation, role: int = ...):
         if orientation == Qt.Vertical:

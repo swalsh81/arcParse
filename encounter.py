@@ -4,13 +4,16 @@ from event import event
 from entity import Entity
 from PyQt5.QtCore import pyqtSignal, QObject
 import tools
-import os
+import os, time
+from io import BytesIO
+from zipfile import ZipFile, ZipExtFile
 
 class Encounter(QObject):
     GETTING_EVENTS_LOG = "Getting events..."
     DATA_CLEANUP_LOG = 'Data Cleanup...'
     RELATING_EVENTS_LOG = 'Relating Events...'
     FINDING_DAMAGE_SOURCES = 'Finding Damage Sources...'
+    STARTING_PARSE = 'Starting Parse...'
 
     progressSignal = pyqtSignal(str, int)
     logSignal = pyqtSignal(str)
@@ -23,7 +26,7 @@ class Encounter(QObject):
         super(Encounter, self).__init__()
         self.path = filepath
 
-        self.entities = dict()  # keys correstond to entity.addr, event.src or event.dest (source and destination of skills)
+        self.entities = dict()  # keys correspond to entity.addr, event.src or event.dest (source and destination of skills)
         self.entitiesID = dict()  # keys are the instance ids which differ from entity.addr.these correspond to src_instid and dest_instid in the event as well as master_src_instid in an event for a pet/minion. values reflect an entity.addr
         self.skills = dict()  # keys are skill.id, values are names
         self.events = []  # chronological array of events
@@ -41,6 +44,7 @@ class Encounter(QObject):
         self.startTime = 0
 
         self.players = []
+        self.playerRef = dict()
         #self.damageSources = dict()
 
         self.kill = False
@@ -62,39 +66,53 @@ class Encounter(QObject):
         # Skill: 68 bytes
         # Event: 64 bytes
 
+    def getFile(self):
+        name, ext = os.path.splitext(self.path)
+        fh = None
+        if ext == ".evtc":
+            fh = open(self.path, 'rb')
+        if ext == ".zip":
+            name, ext = os.path.splitext(os.path.basename(self.path))
+            fh = BytesIO(ZipFile(self.path, 'r').read(name))
+        return fh
+
     def parseQuick(self):
-        with open(self.path, 'rb') as fh:
+        fh = self.getFile()
+        self.progressSignal.emit(self.STARTING_PARSE, -1)
+        self.getHeader(fh)
+        self.getEntities(fh)
+        self.findSuccessFail(fh)
+        self.getLogLength()
+        fh.close()
+
+        # for e in self.entities:
+        #     if self.entities[e].id == self.inst_id:
+        #         self.logSignal.emit("---%s---" % self.entities[e].name)
+        # self.logSignal.emit("Encounter Length: %s" % tools.prettyTimestamp(self.encounterLength))
+        # for e in self.entities:
+        #     if self.entities[e].isPlayer:
+        #         self.entities[e].print()
+        #         self.logSignal.emit("%s on %s" % (self.entities[e].account, self.entities[e].character))
+        self.quickComplete = True
+        self.progressSignal.emit("Done", 100)
+        self.quickFinished.emit(self)
+
+    def parseFull(self):
+        fh = self.getFile()
+        parseStart = time.time()
+        if not self.quickComplete:
             self.getHeader(fh)
             self.getEntities(fh)
             self.findSuccessFail(fh)
-            self.getLogLength()
-            fh.close()
-
-            # for e in self.entities:
-            #     if self.entities[e].id == self.inst_id:
-            #         self.logSignal.emit("---%s---" % self.entities[e].name)
-            # self.logSignal.emit("Encounter Length: %s" % tools.prettyTimestamp(self.encounterLength))
-            # for e in self.entities:
-            #     if self.entities[e].isPlayer:
-            #         self.entities[e].print()
-            #         self.logSignal.emit("%s on %s" % (self.entities[e].account, self.entities[e].character))
-            self.quickComplete = True
-            self.quickFinished.emit(self)
-
-    def parseFull(self):
-        with open(self.path, 'rb') as fh:
-            if not self.quickComplete:
-                self.getHeader(fh)
-                self.getEntities(fh)
-                self.findSuccessFail(fh)
-                #self.getDuration(fh)
-            self.getSkills(fh)
-            self.getAllEvents(fh)
-            fh.close()
-            self.cleanData()
-            self.quickComplete = True
-            self.fullComplete = True
-            self.fullFinished.emit(self)
+            #self.getDuration(fh)
+        self.getSkills(fh)
+        self.getAllEvents(fh)
+        fh.close()
+        self.cleanData()
+        self.quickComplete = True
+        self.fullComplete = True
+        self.fullFinished.emit(self)
+        print("Parse Time: %s" % (time.time() - parseStart))
 
     def getStartOfEvents(self, fh):
         if self.startOfEvents == -1:
@@ -102,24 +120,24 @@ class Encounter(QObject):
         return self.startOfEvents
 
     def getLogLength(self):
-        with open(self.path, 'rb') as fh:
-            fh.seek(self.getStartOfEvents(fh), 0)
-            evt,success = self.parseEvent(fh.read(64))
-            encStart = evt.time
-            if evt.is_statechange == reference.cbtstatechange.CBTS_LOGSTART:
-                #evt.print()
-                self.startTime = evt.val
-            else:
-                while evt.is_statechange != reference.cbtstatechange.CBTS_LOGSTART:
-                    evt, success = self.parseEvent(fh.read(64))
-                    if evt.is_statechange == reference.cbtstatechange.CBTS_LOGSTART:
-                        self.startTime = evt.val
-                        break
+        fh = self.getFile()
+        fh.seek(self.getStartOfEvents(fh), 0)
+        evt,success = self.parseEvent(fh.read(64))
+        encStart = evt.time
+        if evt.is_statechange == reference.cbtstatechange.CBTS_LOGSTART:
+            #evt.print()
+            self.startTime = evt.val
+        else:
+            while evt.is_statechange != reference.cbtstatechange.CBTS_LOGSTART:
+                evt, success = self.parseEvent(fh.read(64))
+                if evt.is_statechange == reference.cbtstatechange.CBTS_LOGSTART:
+                    self.startTime = evt.val
+                    break
 
-            fh.seek(-64, os.SEEK_END)
-            encEnd = struct.unpack("<Q", fh.read(8))[0]
-            self.logLength = encEnd - encStart
-            fh.close()
+        fh.seek(-64, os.SEEK_END)
+        encEnd = struct.unpack("<Q", fh.read(8))[0]
+        self.logLength = encEnd - encStart
+        fh.close()
         return self.startTime, self.logLength
 
     # def getDuration(self,fh):
@@ -151,6 +169,7 @@ class Encounter(QObject):
     def getEntities(self, fh):
         self.getEntityCount(fh)
         fh.seek(20, 0)
+        count = 0
         for i in range(self.entityCount):
             e = Entity()
             addr = fh.read(8)
@@ -164,10 +183,13 @@ class Encounter(QObject):
             if e.isPlayer:
                 self.playerCount += 1
                 self.players.append(e.addr)
+                self.playerRef[e.account] = e.addr
+                self.playerRef[e.character] = e.addr
             if e.id == self.inst_id:
                 self.boss_addr = e.addr
             if self.boss_addr in self.entities and self.entities[self.boss_addr].name == e.name:
                 self.bossAddrs.append(e.addr)
+
 
     def getSkillCount(self, fh):
         if self.skillCount == -1:
@@ -375,10 +397,13 @@ class Encounter(QObject):
             if evt.src_master_instid > 0 and not self.skipEvent(evt.is_statechange):
                 #evt.print()
                 #self.entities[evt.src].print()
-                masterAddr = self.entitiesID[evt.src_master_instid]
-                self.entities[evt.src].master_addr = masterAddr
-                if evt.src not in self.entities[masterAddr].minions:
-                    self.entities[masterAddr].minions.append(evt.src)
+                if evt.src in self.entities:
+                    masterAddr = self.entitiesID[evt.src_master_instid]
+
+                    self.entities[evt.src].master_addr = masterAddr
+
+                    if evt.src not in self.entities[masterAddr].minions:
+                        self.entities[masterAddr].minions.append(evt.src)
                 #self.entities[evt.src].print()
                 #self.entities[masterAddr].print()
 
@@ -405,10 +430,12 @@ class Encounter(QObject):
             if evt.time >= self.encounterLength:
                 break
 
+            if not (evt.src in self.players or evt.dest in self.players or (evt.src_master_instid in self.entitiesID and self.entitiesID[evt.src_master_instid] in self.players)):
+                continue
+
             entityCheck = False
 
             if evt.src in self.entities and evt.dest in self.entities:
-
                 entityCheck = True
 
             if evt.src == evt.dest:

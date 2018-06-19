@@ -41,7 +41,7 @@ class ResourceHandler(QObject):
     def getConnection(self):
         self.lastAccessed = time.time()
         if self.connection == None or self.init == False:
-            print("connecting")
+            print("Open DB")
             path = os.path.abspath(self.getResourceDir() + "/" + DB_URL)
             self.connection = sqlite3.connect(path)
             self.initDB(self.connection)
@@ -62,7 +62,7 @@ class ResourceHandler(QObject):
         if self.lastAccessed + self.timerTick*2 < time.time():
             self.connection.close()
             self.connection = None
-            print("connection closed")
+            print("Close DB")
         else:
             #print("reset")
             self.startConnectionTimeout()
